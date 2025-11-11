@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from src.config import *
+from config import *
 
 def calculate_sma(data, period):
     """Simple Moving Average"""
