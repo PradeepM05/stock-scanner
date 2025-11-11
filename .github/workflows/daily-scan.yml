@@ -1,0 +1,81 @@
+name: Daily Stock Screener
+
+on:
+  schedule:
+    # Run at 9 PM UTC (5 PM EST) every weekday for US market
+    - cron: '0 21 * * 1-5'
+  workflow_dispatch:  # Allow manual trigger with market selection
+    inputs:
+      market:
+        description: 'Market to scan'
+        required: true
+        default: 'US'
+        type: choice
+        options:
+          - US
+          - INDIA
+          - BOTH
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run screener
+      run: |
+        cd src
+        # Use workflow input if manual trigger, otherwise default to US
+        MARKET=${{ github.event.inputs.market || 'US' }}
+        python main.py --market $MARKET
+    
+    - name: Move results to output folder
+      run: |
+        mkdir -p output
+        if [ -f src/stock_picks.csv ]; then
+          cp src/stock_picks.csv output/stock_picks_$(date +%Y%m%d).csv
+          cp src/stock_picks.csv output/stock_picks.csv
+        fi
+        if [ -f src/stock_picks_india.csv ]; then
+          cp src/stock_picks_india.csv output/stock_picks_india_$(date +%Y%m%d).csv
+          cp src/stock_picks_india.csv output/stock_picks_india.csv
+        fi
+        if [ -f src/stock_picks_combined.csv ]; then
+          cp src/stock_picks_combined.csv output/stock_picks_combined_$(date +%Y%m%d).csv
+          cp src/stock_picks_combined.csv output/stock_picks_combined.csv
+        fi
+        # Also copy JSON files
+        if [ -f src/stock_picks_ai_queue.json ]; then
+          cp src/stock_picks_ai_queue.json output/
+        fi
+        if [ -f src/stock_picks_india_ai_queue.json ]; then
+          cp src/stock_picks_india_ai_queue.json output/
+        fi
+        if [ -f src/stock_picks_combined_ai_queue.json ]; then
+          cp src/stock_picks_combined_ai_queue.json output/
+        fi
+    
+    - name: Commit results
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add output/
+        git diff --quiet && git diff --staged --quiet || git commit -m "Daily scan results $(date +%Y-%m-%d) - Market: ${{ github.event.inputs.market || 'US' }}"
+    
+    - name: Push changes
+      uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        branch: main
